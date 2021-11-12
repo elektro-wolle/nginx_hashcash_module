@@ -1,4 +1,4 @@
-# ngx_module_hashcash
+# nginx hashcash module
 WIP simple nginx module for using the hashcash-algorithm as a client-side proof-of-work.
 
 ## Idea behind
@@ -56,7 +56,7 @@ Load module globally:
 `nginx.conf`:
 
 ```
-load_module  /etc/nginx/geoip/ngx_http_geoip2_module.so;
+load_module  /etc/nginx/modules/nginx_hashcash_module.so;
 http {
     ...
 }

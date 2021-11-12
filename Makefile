@@ -5,13 +5,13 @@ LIBS = "-L${OPENSSL_HOME}/lib"
 
 # CC = gcc
 
-bin/ngx_module_hashcash_test: ngx_module_hashcash.h ngx_module_hashcash.c ngx_module_hashcash_test.c
+bin/nginx_hashcash_module_test: nginx_hashcash_module.h nginx_hashcash_module.c nginx_hashcash_module_test.c
 	$(CC) ${INCLUDES} ${LIBS} \
-	-o bin/ngx_module_hashcash_test ngx_module_hashcash_test.c ngx_module_hashcash.c \
+	-o bin/nginx_hashcash_module_test nginx_hashcash_module_test.c nginx_hashcash_module.c \
 	-lcmocka -lcrypto
 
 .prepare:
 	mkdir -p bin
 
-all: .prepare bin/ngx_module_hashcash_test
-	./bin/ngx_module_hashcash_test
+all: .prepare bin/nginx_hashcash_module_test
+	./bin/nginx_hashcash_module_test

@@ -1,4 +1,4 @@
-#include "ngx_module_hashcash.h"
+#include "nginx_hashcash_module.h"
 
 #include <openssl/sha.h>
 #include <stdio.h>
@@ -8,7 +8,7 @@
 /**
  * Count the leading zeros in the data array.
  */
-int16_t ngx_module_hashcash_count_leading_zeros(const unsigned char* data, size_t len)
+int16_t nginx_hashcash_module_count_leading_zeros(const unsigned char* data, size_t len)
 {
     // count number of 0-bytes
     const unsigned char* ptr = data;
@@ -31,7 +31,7 @@ int16_t ngx_module_hashcash_count_leading_zeros(const unsigned char* data, size_
 /**
  * The proof-of-work amount equals to the number of zero-bits leading the sha256
  */
-int16_t ngx_module_hashcash_get_pow_amount(const char* header_token, size_t len)
+int16_t nginx_hashcash_module_get_pow_amount(const char* header_token, size_t len)
 {
     
     unsigned char digest[SHA256_DIGEST_LENGTH];
@@ -39,7 +39,7 @@ int16_t ngx_module_hashcash_get_pow_amount(const char* header_token, size_t len)
     SHA256_Init(&ctx);
     SHA256_Update(&ctx, header_token, len);
     SHA256_Final(digest, &ctx);
-    return ngx_module_hashcash_count_leading_zeros(digest, SHA256_DIGEST_LENGTH);
+    return nginx_hashcash_module_count_leading_zeros(digest, SHA256_DIGEST_LENGTH);
 }
 
 /**
@@ -47,7 +47,7 @@ int16_t ngx_module_hashcash_get_pow_amount(const char* header_token, size_t len)
  * 
  * The token is of the form timestamp-nonce-proof, where timestamp is in epoch.
  */
-int16_t ngx_module_hashcash_validate_token(ngx_module_hashcash_check_ctx_t* ctx)
+int16_t nginx_hashcash_module_validate_token(nginx_hashcash_module_check_ctx_t* ctx)
 {
     char* token_to_check = strndup(ctx->header_token, ctx->header_length);
     char* token_ptr = NULL;
@@ -80,7 +80,7 @@ int16_t ngx_module_hashcash_validate_token(ngx_module_hashcash_check_ctx_t* ctx)
     }
 
     // check work
-    int16_t work = ngx_module_hashcash_get_pow_amount(ctx->header_token, ctx->header_length);
+    int16_t work = nginx_hashcash_module_get_pow_amount(ctx->header_token, ctx->header_length);
     if (work < ctx->min_work_needed) {
         return NGX_MODULE_HASHCASH_WORK_NEEDED;
     }
