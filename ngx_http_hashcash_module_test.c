@@ -5,71 +5,71 @@
 #include <string.h>
 
 #include <cmocka.h>
-#include "nginx_hashcash_module.h"
+#include "ngx_http_hashcash_module.h"
 
 static void test_clz_with_12_zeroes(void** state)
 {
     const unsigned char vec[] = { 0x00, 0x08 };
-    assert_int_equal(12, nginx_hashcash_module_count_leading_zeros(vec, 2));
+    assert_int_equal(12, ngx_http_hashcash_module_count_leading_zeros(vec, 2));
 }
 
 static void test_clz_without_zeroes(void** state)
 {
     const unsigned char vec[] = { 0x80, 0x08 };
-    assert_int_equal(0, nginx_hashcash_module_count_leading_zeros(vec, 2));
+    assert_int_equal(0, ngx_http_hashcash_module_count_leading_zeros(vec, 2));
 }
 
 static void test_clz_with_all_zeroes(void** state)
 {
     const unsigned char vec[] = { 0x00, 0x00 };
-    assert_int_equal(16, nginx_hashcash_module_count_leading_zeros(vec, 2));
+    assert_int_equal(16, ngx_http_hashcash_module_count_leading_zeros(vec, 2));
 }
 
 static void test_clz_with_lsb_set(void** state)
 {
     const unsigned char vec[] = { 0x01, 0x00 };
-    assert_int_equal(7, nginx_hashcash_module_count_leading_zeros(vec, 2));
+    assert_int_equal(7, ngx_http_hashcash_module_count_leading_zeros(vec, 2));
 }
 
 static void test_calculate_work_no_work(void** state)
 {
     const char* header = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-1";
-    assert_int_equal(2, nginx_hashcash_module_get_pow_amount(header, strlen(header)));
+    assert_int_equal(2, ngx_http_hashcash_module_get_pow_amount(header, strlen(header)));
 }
 
 static void test_calculate_work_20(void** state)
 {
     const char* header = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401";
-    assert_int_equal(17, nginx_hashcash_module_get_pow_amount(header, strlen(header)));
+    assert_int_equal(17, ngx_http_hashcash_module_get_pow_amount(header, strlen(header)));
 }
 
 static void test_check_wrong_header(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 1,
         .header_token = "foobar",
         .header_length = 6,
         .min_work_needed = 1
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 static void test_check_malformed_header(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 1,
         .header_token = "asd-foo-bar",
         .header_length = strlen("asd-foo-bar"),
         .min_work_needed = 1
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 static void test_check_expired_header(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 123456780,
         .max_time_diff = 8,
         .header_token =  "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
@@ -77,12 +77,12 @@ static void test_check_expired_header(void** state)
         .min_work_needed = 16
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_EXPIRED, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_EXPIRED, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 static void test_check_non_expired_header(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 1636738046640,
         .max_time_diff = 8,
         .header_token = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
@@ -90,7 +90,7 @@ static void test_check_non_expired_header(void** state)
         .min_work_needed = 16
     };
 
-    assert_int_equal(17, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(17, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 int16_t return_duplicate(const char* nonce, int ttl) {
@@ -99,7 +99,7 @@ int16_t return_duplicate(const char* nonce, int ttl) {
 
 static void test_check_duplicated_header(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 1636738046640,
         .max_time_diff = 8,
         .header_token = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
@@ -108,12 +108,12 @@ static void test_check_duplicated_header(void** state)
         .validate_token_function = &return_duplicate
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_DUPLICATE, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_DUPLICATE, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 static void test_check_not_enough_work(void** state)
 {
-    nginx_hashcash_module_check_ctx_t ctx = {
+    ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 1636738046640,
         .max_time_diff = 8,
         .header_token = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-1",
@@ -121,7 +121,7 @@ static void test_check_not_enough_work(void** state)
         .min_work_needed = 16
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_WORK_NEEDED, nginx_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_WORK_NEEDED, ngx_http_hashcash_module_validate_token(&ctx));
 }
 
 int main(int argc, char** argv)
