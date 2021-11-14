@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <cmocka.h>
 #include "ngx_http_hashcash_module.h"
+#include <cmocka.h>
 
 static void test_clz_with_12_zeroes(void** state)
 {
@@ -52,7 +52,7 @@ static void test_check_wrong_header(void** state)
         .min_work_needed = 1
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx, NULL));
 }
 
 static void test_check_malformed_header(void** state)
@@ -64,7 +64,7 @@ static void test_check_malformed_header(void** state)
         .min_work_needed = 1
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_INVALID_HEADER, ngx_http_hashcash_module_validate_token(&ctx, NULL));
 }
 
 static void test_check_expired_header(void** state)
@@ -72,12 +72,12 @@ static void test_check_expired_header(void** state)
     ngx_http_hashcash_module_check_ctx_t ctx = {
         .check_time = 123456780,
         .max_time_diff = 8,
-        .header_token =  "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
+        .header_token = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
         .header_length = strlen("1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401"),
         .min_work_needed = 16
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_EXPIRED, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_EXPIRED, ngx_http_hashcash_module_validate_token(&ctx, NULL));
 }
 
 static void test_check_non_expired_header(void** state)
@@ -90,10 +90,11 @@ static void test_check_non_expired_header(void** state)
         .min_work_needed = 16
     };
 
-    assert_int_equal(17, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(17, ngx_http_hashcash_module_validate_token(&ctx, NULL));
 }
 
-int16_t return_duplicate(const char* nonce, int ttl) {
+int16_t return_duplicate(ngx_http_hashcash_module_check_ctx_t* ctx)
+{
     return NGX_MODULE_HASHCASH_DUPLICATE;
 }
 
@@ -104,11 +105,10 @@ static void test_check_duplicated_header(void** state)
         .max_time_diff = 8,
         .header_token = "1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401",
         .header_length = strlen("1636738046640-d9c38db5a0a74c7e94774e879d24c669-19401"),
-        .min_work_needed = 16,
-        .validate_token_function = &return_duplicate
+        .min_work_needed = 16
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_DUPLICATE, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_DUPLICATE, ngx_http_hashcash_module_validate_token(&ctx, return_duplicate));
 }
 
 static void test_check_not_enough_work(void** state)
@@ -121,7 +121,7 @@ static void test_check_not_enough_work(void** state)
         .min_work_needed = 16
     };
 
-    assert_int_equal(NGX_MODULE_HASHCASH_WORK_NEEDED, ngx_http_hashcash_module_validate_token(&ctx));
+    assert_int_equal(NGX_MODULE_HASHCASH_WORK_NEEDED, ngx_http_hashcash_module_validate_token(&ctx, NULL));
 }
 
 int main(int argc, char** argv)

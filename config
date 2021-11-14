@@ -1,10 +1,9 @@
-ngx_module_type=HTTP
+ngx_module_type=HTTP_FILTER
 ngx_module_name=ngx_http_hashcash_module
-ngx_module_srcs="$ngx_addon_dir/ngx_http_hashcash_module.c"
-ngx_waf_incs="/usr/local/Cellar/libmemcached/1.0.18_2/include/"
-ngx_waf_libs="-lmemcached"
 
-ngx_module_libs="-Lcrypt"
+ngx_module_srcs="$ngx_addon_dir/ngx_http_hashcash_module.c"
+ngx_module_libs="-lcrypto -lmemcached"
+
 ngx_module_order="ngx_http_copy_filter $ngx_module_name"
 
 . auto/module

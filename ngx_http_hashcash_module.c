@@ -1,16 +1,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifndef UNIT_TEST
 #include <libmemcached-1.0/memcached.h>
+#include <libmemcachedutil-1.0/pool.h>
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
 #endif
 
 #include "ngx_http_hashcash_module.h"
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 /**
  * Count the leading zeros in the data array.
@@ -41,12 +44,20 @@ int16_t ngx_http_hashcash_module_count_leading_zeros(const unsigned char* data, 
 int16_t ngx_http_hashcash_module_get_pow_amount(const char* header_token, size_t len)
 {
 
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    SHA256_CTX ctx;
-    SHA256_Init(&ctx);
-    SHA256_Update(&ctx, header_token, len);
-    SHA256_Final(digest, &ctx);
-    return ngx_http_hashcash_module_count_leading_zeros(digest, SHA256_DIGEST_LENGTH);
+    unsigned char digest[EVP_MAX_MD_SIZE];
+    static const EVP_MD* EVP_MD_SHA256;
+    if (EVP_MD_SHA256 == NULL) {
+        EVP_MD_SHA256 = EVP_get_digestbyname("SHA256");
+    }
+    unsigned int digest_len;
+
+    EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex2(mdctx, EVP_MD_SHA256, NULL);
+    EVP_DigestUpdate(mdctx, header_token, len);
+    EVP_DigestFinal_ex(mdctx, digest, &digest_len);
+    EVP_MD_CTX_free(mdctx);
+
+    return ngx_http_hashcash_module_count_leading_zeros(digest, digest_len);
 }
 
 /**
@@ -54,7 +65,7 @@ int16_t ngx_http_hashcash_module_get_pow_amount(const char* header_token, size_t
  *
  * The token is of the form timestamp-nonce-proof, where timestamp is in epoch.
  */
-int16_t ngx_http_hashcash_module_validate_token(ngx_http_hashcash_module_check_ctx_t* ctx)
+int16_t ngx_http_hashcash_module_validate_token(ngx_http_hashcash_module_check_ctx_t* ctx, ngx_http_hashcash_module_validate_token_is_new_t validate_token_function)
 {
     char* token_to_check = strndup(ctx->header_token, ctx->header_length);
     char* token_ptr = NULL;
@@ -92,23 +103,29 @@ int16_t ngx_http_hashcash_module_validate_token(ngx_http_hashcash_module_check_c
         return NGX_MODULE_HASHCASH_WORK_NEEDED;
     }
 
+    ctx->sent_time = timestamp;
+    ctx->nonce = nonce;
+    ctx->proof = proof;
+
     // check if nonce is new
-    if (ctx->validate_token_function != NULL) {
-        return ctx->validate_token_function(nonce, ctx->max_time_diff);
+    if (validate_token_function != NULL) {
+        return validate_token_function(ctx);
     }
     return work;
 }
 
 #ifndef UNIT_TEST
+/** config options for module */
 typedef struct {
     ngx_str_t memcache_servers;
     ngx_str_t memcache_prefix;
     ngx_int_t max_time_diff;
     ngx_uint_t min_work_needed;
 
-    memcached_st memcache;
+    memcached_pool_st* pool;
 } ngx_http_hashcash_loc_conf_t;
 
+/** allocates space for config struct */
 static void*
 ngx_http_hashcash_create_loc_conf(ngx_conf_t* cf)
 {
@@ -123,16 +140,18 @@ ngx_http_hashcash_create_loc_conf(ngx_conf_t* cf)
     return conf;
 }
 
+/** merges the config structs */
 static char*
 ngx_http_hashcash_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
 {
     ngx_http_hashcash_loc_conf_t* prev = parent;
     ngx_http_hashcash_loc_conf_t* conf = child;
     if (conf->memcache_servers.data == NULL) {
-        conf->memcache = prev->memcache;
+        ngx_log_debug(NGX_LOG_INFO, cf->log, 0, "Using pool defined in parent");
+        conf->pool = prev->pool;
     }
 
-    ngx_conf_merge_str_value(conf->memcache_servers, prev->memcache_servers, "127.0.0.1:11211");
+    ngx_conf_merge_str_value(conf->memcache_servers, prev->memcache_servers, "--SERVER=127.0.0.1:11211");
     ngx_conf_merge_str_value(conf->memcache_prefix, prev->memcache_prefix, "__");
     ngx_conf_merge_sec_value(conf->max_time_diff, prev->max_time_diff, 60);
     ngx_conf_merge_uint_value(conf->min_work_needed, prev->min_work_needed, 16);
@@ -151,21 +170,66 @@ ngx_http_hashcash_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
     return NGX_CONF_OK;
 }
 
-char* ngx_http_hashcash_create_server_pool(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
+/** converts the server-string to a memcache pool */
+static char* ngx_http_hashcash_create_server_pool(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)
 {
     ngx_conf_set_str_slot(cf, cmd, conf);
     ngx_http_hashcash_loc_conf_t* cfg = (ngx_http_hashcash_loc_conf_t*)conf;
-    memcached_server_list_st serverlist = memcached_servers_parse((const char*)cfg->memcache_servers.data);
-    if (serverlist->number_of_hosts == 0) {
-        return NGX_CONF_ERROR;
-    }
-    memcached_create(&cfg->memcache);
+    cfg->pool = memcached_pool((const char*)cfg->memcache_servers.data, cfg->memcache_servers.len);
     return NGX_CONF_OK;
 }
 
+/** Checks the token against the memcache pool */
+static int16_t ngx_http_hashcash_header_check_memcache(ngx_http_hashcash_module_check_ctx_t* ctx)
+{
+    ngx_int_t ret = 0;
+    memcached_return rc;
+    memcached_pool_st* pool = (memcached_pool_st*)ctx->pool;
+    ngx_http_request_t* request = (ngx_http_request_t*)ctx->request;
+
+    memcached_st* memcache = memcached_pool_pop(pool, true, &rc);
+    if (rc != MEMCACHED_SUCCESS) {
+        ngx_log_debug(NGX_LOG_INFO, request->connection->log, rc, "Failed to connect to memcached (%s)", memcached_strerror(memcache, rc));
+        memcached_pool_push(pool, memcache);
+        ret = NGX_OK;
+    } else {
+        size_t len = strlen(ctx->prefix) + strlen(ctx->nonce);
+        char key[len];
+        key[0] = 0;
+        strcat(key, ctx->prefix);
+        strcat(key, ctx->nonce);
+
+        rc = memcached_replace(memcache, key, strlen(key), "", 0, ctx->max_time_diff, (uint32_t)0);
+
+        if (rc == MEMCACHED_SUCCESS) {
+            memcached_pool_push(pool, memcache);
+            return NGX_OK;
+        } else if (rc == MEMCACHED_NOTFOUND) {
+
+            rc = memcached_set(memcache, key, strlen(key), "", 0, ctx->max_time_diff, (uint32_t)0);
+
+            if (rc == MEMCACHED_SUCCESS) {
+                memcached_pool_push(pool, memcache);
+                return NGX_MODULE_HASHCASH_DUPLICATE;
+            } else {
+                ngx_log_debug(NGX_LOG_INFO, request->connection->log, rc, "Failed to save key (%s)", memcached_strerror(memcache, rc));
+                memcached_pool_push(pool, memcache);
+            }
+        } else {
+            ngx_log_debug(NGX_LOG_INFO, request->connection->log, rc, "Failed to replace key (%s)", memcached_strerror(memcache, rc));
+            memcached_pool_push(pool, memcache);
+            return NGX_OK;
+        }
+    }
+    return NGX_OK;
+}
+
+ngx_int_t ngx_http_hashcash_init(ngx_conf_t* cf);
+
+// NGINX Module stuff below
 static ngx_http_module_t ngx_http_hashcash_module_ctx = {
     NULL, /* preconfiguration */
-    NULL, /* postconfiguration */
+    ngx_http_hashcash_init, /* postconfiguration */
 
     NULL, /* create main configuration */
     NULL, /* init main configuration */
@@ -219,4 +283,61 @@ ngx_module_t ngx_http_hashcash_module = {
     NULL, /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
+
+/** Checks the token in If-Match */
+static ngx_int_t
+ngx_http_hashcash_header_filter(ngx_http_request_t* request)
+{
+    ngx_http_hashcash_loc_conf_t* cfg = ngx_http_get_module_loc_conf(request, ngx_http_hashcash_module);
+
+    if (request->headers_in.if_match != NULL && request->headers_in.if_match->value.data != NULL) {
+        request->headers_out.status = 412;
+        ngx_str_set(&request->headers_out.status_line, "Header missing");
+        ngx_http_send_header(request);
+        return NGX_OK;
+    }
+
+    ngx_http_hashcash_module_check_ctx_t ctx;
+    ctx.check_time = time(NULL);
+    ctx.header_length = request->headers_in.if_match->value.len;
+    ctx.header_token = (char*)request->headers_in.if_match->value.data;
+    ctx.max_time_diff = cfg->max_time_diff;
+    ctx.min_work_needed = cfg->min_work_needed;
+    ctx.pool = cfg->pool;
+    ctx.request = request;
+    ngx_log_debug(NGX_LOG_DEBUG, request->connection->log, 0, "Validate header %s", ctx.header_token);
+
+    int16_t c = ngx_http_hashcash_module_validate_token(&ctx, ngx_http_hashcash_header_check_memcache);
+    if (c >= 0) {
+        return ngx_http_next_header_filter(request);
+    }
+    switch (c) {
+    case NGX_MODULE_HASHCASH_INVALID_HEADER:
+        ngx_str_set(&request->headers_out.status_line, "Header invalid");
+        break;
+    case NGX_MODULE_HASHCASH_EXPIRED:
+        ngx_str_set(&request->headers_out.status_line, "Header expired");
+        break;
+    case NGX_MODULE_HASHCASH_WORK_NEEDED:
+        ngx_str_set(&request->headers_out.status_line, "Header insufficient");
+        break;
+    case NGX_MODULE_HASHCASH_DUPLICATE:
+        ngx_str_set(&request->headers_out.status_line, "Header duplicate");
+        break;
+    }
+    request->headers_out.status = 412;
+    ngx_http_send_header(request);
+    return NGX_OK;
+}
+
+/** Install hash cash as first filter. */
+ngx_int_t ngx_http_hashcash_init(ngx_conf_t* cf)
+{
+    ngx_http_next_header_filter = ngx_http_top_header_filter;
+    ngx_http_top_header_filter = ngx_http_hashcash_header_filter;
+    return NGX_OK;
+}
+
 #endif
