@@ -1,4 +1,4 @@
-LIBMEMCACHED_HOME = /usr/local/Cellar/libmemcached/1.0.18_2
+LIBMEMCACHED_HOME = /usr/local/opt/libmemcached/
 OPENSSL_HOME = /usr/local/opt/openssl@3
 NGINX_HOME = $(PWD)/nginx-1.21.4/
 
