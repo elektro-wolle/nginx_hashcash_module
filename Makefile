@@ -9,8 +9,6 @@ LIBS = -L${OPENSSL_HOME}/lib
 CFLAGS = -Wall -O
 # CC = gcc
 
-#.configure_openssl:
-#	cd $(OPENSSL_HOME) && ./Configure darwin64-x86_64-cc shared enable-ec_nistp_64_gcc_128 no-ssl2 no-ssl3 no-comp --openssldir=/usr/local/openssl/macos-x86_64
 
 .configure_nginx:
 	cd nginx-1.21.4 && ./configure --add-dynamic-module="$(PWD)" --with-http_ssl_module --with-cc-opt="-I$(OPENSSL_HOME)/include -I$(LIBMEMCACHED_HOME)/include/" --with-ld-opt="-L$(OPENSSL_HOME)/lib"
@@ -25,8 +23,6 @@ bin/ngx_http_hashcash_module_test: ngx_http_hashcash_module.c ngx_http_hashcash_
 	-lcmocka -lcrypto
 
 .download:
-	wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz 
-	tar xvzf openssl-1.1.1l.tar.gz
 	wget https://nginx.org/download/nginx-1.21.4.tar.gz
 	tar xvzf nginx-1.21.4.tar.gz
 
