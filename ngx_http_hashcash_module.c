@@ -151,7 +151,7 @@ ngx_http_hashcash_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)
         conf->pool = prev->pool;
     }
 
-    ngx_conf_merge_str_value(conf->memcache_servers, prev->memcache_servers, "--SERVER=127.0.0.1:11211");
+    ngx_conf_merge_str_value(conf->memcache_servers, prev->memcache_servers, "--SERVER=127.0.0.1:11211 --POOL-MIN=4");
     ngx_conf_merge_str_value(conf->memcache_prefix, prev->memcache_prefix, "__");
     ngx_conf_merge_sec_value(conf->max_time_diff, prev->max_time_diff, 60);
     ngx_conf_merge_uint_value(conf->min_work_needed, prev->min_work_needed, 16);

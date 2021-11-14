@@ -69,17 +69,15 @@ And protect some endpoints:
 ```
 server {
     listen 443 ssl;
-    hash_cash_memcache localhost:11211;      # defaults
-    hash_cash_min_work 16;                   # default
-    hash_cash_ttl 60;                        # default
-    hash_cash_methods POST,PUT,DELETE,PATCH; # defaults
+    hash_cash_memcache "--SERVER=localhost:11211 --POOL-MIN=4"; # defaults
+    hash_cash_min_work 16;                         # default
+    hash_cash_ttl 60;                              # default
 
     location / {
 ...
     }
 
     location /register {
-        hash_cash_methods *;   # all methods have to provide proof-of-work
         hash_cash_min_work 20; # make this endpoint more expensive
 ...
     }
