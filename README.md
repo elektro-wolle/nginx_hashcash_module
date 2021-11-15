@@ -20,14 +20,14 @@ proofOfWork = function (nonce) {
 }
 ```
 
-And setting the `If-Match`-Header to 
+And setting the `x-hashcash`-Header to 
 
 ```
 let nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 let promise = fetch(url, {
   method: "GET",
   headers: {
-    "If-Match": proofOfWork(nonce)
+    "x-hashcash": proofOfWork(nonce)
   },
   ...
 });
@@ -45,7 +45,11 @@ Prerequisites:
 Run build:
 
 ```
-CC=gcc OPENSSL_HOME=... NGINX=... make all
+# only the first time
+make .download
+make .configure_nginx
+# after downloading and configuring
+make all
 ```
 
 
@@ -67,19 +71,16 @@ And protect some endpoints:
 `default.conf`:
 
 ```
-server {
-    listen 443 ssl;
-    hash_cash_memcache "--SERVER=localhost:11211 --POOL-MIN=4"; # defaults
-    hash_cash_min_work 16;                         # default
-    hash_cash_ttl 60;                              # default
+server { 
+    ...
 
-    location / {
-...
+    location /protected  {
+        hashcash_min_work 20;
+        hashcash_max_ttl 30;
+        ...
     }
-
-    location /register {
-        hash_cash_min_work 20; # make this endpoint more expensive
-...
+    location / {
+        ...
     }
 }
 ```
