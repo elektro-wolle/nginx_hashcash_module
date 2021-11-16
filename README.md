@@ -1,6 +1,6 @@
 # nginx hashcash module
 
-Simple nginx module for using the idee behind the [hashcash-algorithm](https://en.wikipedia.org/wiki/Hashcash) as a client-side proof-of-work, to make brute-force a little bit more expensive for an attacker.
+Simple nginx module for using the idea behind the [hashcash-algorithm](https://en.wikipedia.org/wiki/Hashcash) as a client-side proof-of-work, to make brute-force a little bit more expensive for an attacker.
 
 ## How to use it
 
